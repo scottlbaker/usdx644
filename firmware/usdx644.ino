@@ -1,28 +1,23 @@
 
 // ============================================================================
-// usdx644.ino
 //
-// Much of this code was inspired by the uSDX project by Guido PE1NNZ
-// The uSDX project which used an Atmega328 processor
-// This project uses the Atmega644 processor which is similar to the 328
-// but which has more RAM and Flash memory
+// usdx644.ino :: An SSB/CW capable QRP transceiver
 //
-// Permission is hereby granted, free of charge, to any person obtaining
-// a copy of this software and associated documentation files (the "Software"),
-// to deal in the Software without restriction, including without limitation
-// the rights to use, copy, modify, merge, publish, distribute, sublicense,
-// and or sell copies of the Software, and to permit persons to whom the
-// Software is furnished to do so, subject to the following conditions: The
-// above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED
-// "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
-// NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-// HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
-// AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+// (c) Scott Baker KJ7NLA
 //
-// Arduino IDE settings:
+// This project was inspired by the uSDX project by Guido PE1NNZ
+// which used the Atmega328 processor. This project uses the Atmega644
+// processor which has more RAM and Flash memory
+//
+// Libraries
+// ---------
+// wire.h         - Arduino I2C lib
+// wdt.h          - Arduino watchdog timer lib
+// EEPROMex.h     - eeprom read/write lib
+// font.h         - an OLED font that I created
+//
+// Arduino IDE settings
+// --------------------
 // board: Atmega644 (MightyCore)
 // clock: external 16MHz
 // BOD: BOD 2.7V
@@ -32,15 +27,33 @@
 // bootloader: no bootloader
 // programmer: AVRISP mkII (MightyCore)
 //
+// License
+// -------
+// Permission is hereby granted, free of charge, to any person obtaining
+// a copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to
+// permit persons to whom the Software is furnished to do so, subject
+// to the following conditions:
+//
+// The above copyright notice and this permission notice shall be
+// included in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
+// ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+// CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//
 // ============================================================================
 
-// #define DEBUG  1           // uncomment for debugging
+#define VERSION   "1.00X"               // firmware version
+#define DATE      "Jan 14 2024"         // firmware release date
 
-#define VERSION   "1.00a"
-#define TIMESTAMP "6/27/2022"
-
-#define SI5351_ADDR   0x60    // Si5351 I2C address
-#define IOEXP16_ADDR  0x20    // band switching address
+// Arduino Pins
 
 #define QSDQ      PIN_PA0     // Q
 #define QSDI      PIN_PA1     // I
@@ -53,8 +66,8 @@
 
 #define BLINKY    PIN_PB0     // diag LED
 #define XP4       PIN_PB1     // extra pin (not used)
-#define SDA0      PIN_PB2     // I2C bus #0 (Si5351)
-#define SCL0      PIN_PB3     // I2C bus #0 (Si5351)
+#define SDA0      PIN_PB2     // I2C bus #0 (si5351)
+#define SCL0      PIN_PB3     // I2C bus #0 (si5351)
 #define RXEN      PIN_PB4     // Receive control
 #define MOSI      PIN_PB5     // SPI programming pin
 #define MISO      PIN_PB6     // SPI programming pin
@@ -80,29 +93,35 @@
 #define XP1       PIN_PD7     // extra pin (not used)
 
 // uncomment to enable
+//#define CAT             1   // CAT control
+//#define CAT_EXT         1   // CAT extensions
+//#define CAT_STREAMING   1   // CAT streaming
+//#define LPF_NOLATCH     1   // non-latching relay support
+//#define QUAD            1   // improve tx quality?
+//#define SWR_METER       1   // SWR meter support
 
-//#define CAT             1  // CAT control
-//#define CAT_EXT         1  // CAT extensions
-//#define CAT_STREAMING   1  // CAT streaming
-//#define LPF_NOLATCH     1  // non-latching relay support
-//#define QUAD            1  // improve tx quality?
+#define DEBUG1            0   // set to 1 for debug
+#define DEBUG2            0   // set to 1 for debug
 
-#define SWR_METER         1  // SWR meter support
-
-// used by switch_rxtx()
-#define NOSHOW  0
-#define SHOW    1
+// ic2 addresses
+#define SI5351_ADDR   0x60    // si5351
+#define IOEXP16_ADDR  0x20    // for band select
 
 // generic
-#define OFF   0
-#define ON    1
-#define NO    0
-#define YES   1
-#define LAST  1
-#define DOWN  0
-#define UP    1
-#define NONE  0
+#define OFF     0
+#define ON      1
+#define NO      0
+#define YES     1
+#define LAST    1
+#define DOWN    0
+#define UP      1
+#define NONE    0
+#define NOSHOW  0
+#define SHOW    1
+#define NOTX    1
 
+// msec delay times
+#define DEBOUNCE     20
 #define ONE_SECOND   1000
 #define TWO_SECONDS  2000
 
@@ -249,11 +268,11 @@ uint32_t t0;
 // for display blank/timeout
 #define ONE_MINUTE 60000
 uint8_t display  = ON;
-uint8_t xtimeout = 5;       // blank after 5 minutes
+uint8_t xtimeout = 5;         // blank after 5 minutes
 uint8_t xtimer   = 0;
 uint32_t xdt;
 
-uint32_t fxtal = 27006137;  // Si5351 calibrated frequency
+uint32_t fxtal   = 27006000;  // si5351 xtal cal frequency
 
 #if (ARDUINO < 10810)
    #error "Arduino IDE 1.8.10 or newer is required"
@@ -278,7 +297,8 @@ uint32_t fxtal = 27006137;  // Si5351 calibrated frequency
 // prototype defs
 int8_t menuAction(uint8_t id);
 void goertzel(uint8_t show);
-void switch_rxtx(uint8_t tx_enable, uint8_t show);
+void goto_rx(uint8_t show);
+void goto_tx(uint8_t show, uint8_t notx);
 void run_diags();
 void saveAll();
 
@@ -309,12 +329,12 @@ inline int16_t sdr_rx_common_i();
 #define CLICK      0x01  // click
 #define LONG       0x02  // long press
 #define DLP        0x04  // double-long press
-#define SLP        0x08  // super-long press
+#define TLP        0x08  // triple-long press
 
 // button times (ms)
 #define MS_LONG     300  // long
 #define MS_DLP      600  // double-long
-#define MS_SLP     1200  // super-long
+#define MS_TLP     1200  // triple-long
 
 // menu IDs
 enum menu_t {
@@ -335,6 +355,8 @@ enum menu_t {
 #define ENCO_PRESSED  !digitalRead(UI3)
 #define BUTTON_PRESSED (EXIT_PRESSED||MENU_PRESSED||ENCO_PRESSED)
 
+// morse paddle macros
+#define PTT_PRESSED  !digitalRead(PTT)
 #define DIT_PRESSED  !digitalRead(ditkey)
 #define DAH_PRESSED  !digitalRead(dahkey)
 #define DIT_OR_DAH   (DIT_PRESSED || DAH_PRESSED)
@@ -432,15 +454,16 @@ void read_paddles() {
   }
 }
 
-// Secondary I2C bus used by OLED
-class I2C_ {
+// I2C bus used by OLED
+class I2C1 {
 public:
-  // initialize
-  void init() {
+
+  I2C1() {
     TWBR = 12;  // set SCL delay
     TWSR = 0;   // set prescaler to 1
     TWCR = (1<<TWEN);  // enable
   }
+
   // start of transmission
   void start(uint8_t address) {
     // send start condition
@@ -451,19 +474,22 @@ public:
     TWCR = (1<<TWINT) | (1<<TWEN);
     while (!(TWCR & (1<<TWINT)));
   }
+
   // write data
   void write(uint8_t data) {
     TWDR = data;
     TWCR = (1<<TWINT) | (1<<TWEN);
     while (!(TWCR & (1<<TWINT)));
   }
+
   // end of transaction
   void stop() {
     TWCR = (1<<TWINT) | (1<<TWSTO) | (1<<TWEN);
     while (TWCR & (1<<TWSTO));
   }
 };
-I2C_ Wire;
+
+I2C1 i2c1;
 
 // SSD1306 OLED initialization sequence
 const uint8_t oled_init_sequence [] = {
@@ -502,18 +528,18 @@ public:
 
   // send a command
   void sendcmd(uint8_t b) {
-    Wire.start(OLED_ADDR);
-    Wire.write(OLED_COMMAND);
-    Wire.write(b);
-    Wire.stop();
+    i2c1.start(OLED_ADDR);
+    i2c1.write(OLED_COMMAND);
+    i2c1.write(b);
+    i2c1.stop();
   }
 
   // send data
   void senddata(uint8_t data) {
-    Wire.start(OLED_ADDR);
-    Wire.write(OLED_DATA);
-    Wire.write(data);
-    Wire.stop();
+    i2c1.start(OLED_ADDR);
+    i2c1.write(OLED_DATA);
+    i2c1.write(data);
+    i2c1.stop();
   }
 
   // turn off the display
@@ -526,16 +552,16 @@ public:
   void setCursor(uint8_t col, uint8_t row, uint8_t scale=1) {
     if (scale) {oledX = col*FONT_W; oledY = row*FONT_H;}
     else {oledX = col; oledY = row;}
-    Wire.start(OLED_ADDR);
-    Wire.write(OLED_COMMAND);
-    Wire.write(OLED_FRAME | (oledY & 0x07));
+    i2c1.start(OLED_ADDR);
+    i2c1.write(OLED_COMMAND);
+    i2c1.write(OLED_FRAME | (oledY & 0x07));
     uint8_t _oledX = oledX;
-    Wire.write(0x10 | ((_oledX & 0xf0) >> 4));
-    Wire.write(_oledX & 0x0f);
-    Wire.stop();
+    i2c1.write(0x10 | ((_oledX & 0xf0) >> 4));
+    i2c1.write(_oledX & 0x0f);
+    i2c1.stop();
   }
 
-  // goto the next line
+  // cursor to next line
   void newLine() {
     oledY+=FONT_H;
     if (oledY > OLED_PAGES - FONT_H) {
@@ -578,12 +604,12 @@ public:
   }
 
   void begin(uint8_t cols, uint8_t rows, uint8_t charsize = 0) {
-    Wire.start(OLED_ADDR);
-    Wire.write(OLED_COMMAND);
+    i2c1.start(OLED_ADDR);
+    i2c1.write(OLED_COMMAND);
     for (uint8_t i=0; i < sizeof(oled_init_sequence); i++) {
-      Wire.write(oled_init_sequence[i]);
+      i2c1.write(oled_init_sequence[i]);
     }
-    Wire.stop();
+    i2c1.stop();
     delayMicroseconds(100);
     clrScreen();
   }
@@ -595,8 +621,8 @@ public:
     uint8_t line = FONT_H;
     do {
       if (FONT_STRETCHV) offset = ((uint16_t)c) * FONT_W/(FONT_STRETCHH+1) * FONT_H/(2*FONT_STRETCHV);
-      Wire.start(OLED_ADDR);
-      Wire.write(OLED_DATA);
+      i2c1.start(OLED_ADDR);
+      i2c1.write(OLED_DATA);
       for (uint8_t i=0; i < (FONT_W/(FONT_STRETCHH+1)); i++) {
         uint8_t b = pgm_read_byte(&(font[offset++]));
         if (FONT_STRETCHV) {
@@ -605,11 +631,11 @@ public:
             b2 |=/* ! */(b & (1<<i)) ? (1<<(i*2)) | (1<<((i*2)+1)): 0x00;
           else for (uint8_t i=0; i<4; i++)
             b2 |=/* ! */(b & (1<<(i+4))) ? (1<<(i*2)) | (1<<((i*2)+1)): 0x00;
-          Wire.write(b2);
-          if (FONT_STRETCHH) Wire.write(b2);
-        } else { Wire.write(b); if (FONT_STRETCHH) Wire.write(b); }
+          i2c1.write(b2);
+          if (FONT_STRETCHH) i2c1.write(b2);
+        } else { i2c1.write(b); if (FONT_STRETCHH) i2c1.write(b); }
       }
-      Wire.stop();
+      i2c1.stop();
       if (FONT_H == 1) {
         oledX+=FONT_W;
       }
@@ -659,12 +685,17 @@ public:
 Display<OLEDDevice> oled;
 
 volatile int8_t encoder_val = 0;
+volatile int8_t encoder_ui = 0;
 uint8_t  encoder_state;
-uint8_t  ui_lock = OFF;  // lock the UI buttons
+uint8_t  ui_locked = NO;   // UI locked status
 
 // rotary encoder pin change interrupt handler
 ISR(PCINT2_vect) {
-  if (ui_lock) return;  // check if UI is locked
+  // check if UI is locked
+  if (ui_locked) {
+    encoder_ui = 1;
+    return;
+  }
   encoder_state = (encoder_state << 4) | (digitalRead(ROTB) << 1) | digitalRead(ROTA);
   switch (encoder_state) {
     case 0x23:  encoder_val++; break;
@@ -682,8 +713,8 @@ void encoder_init() {
   interrupts();
 }
 
-// Primary I2C bus used by Si5351
-class I2C {
+// I2C bus used by si5351
+class I2C0 {
 public:
 
   #define I2C_DELAY   4    // I2C Speed (2=939kb/s too fast!!)
@@ -700,14 +731,14 @@ public:
   #define I2C_SCL_HI() I2C_DDR &= ~I2C_SCL; DELAY(I2C_DELAY);
   #define I2C_SCL_LO() I2C_DDR |=  I2C_SCL; DELAY(I2C_DELAY);
 
-  I2C() {
+  I2C0() {
     I2C_PORT &= ~( I2C_SDA | I2C_SCL );
     I2C_SCL_HI();
     I2C_SDA_HI();
     I2C_SDA_LO();
   }
 
-  ~I2C() {
+  ~I2C0() {
     I2C_PORT &= ~( I2C_SDA | I2C_SCL );
     I2C_DDR &= ~( I2C_SDA | I2C_SCL );
   }
@@ -786,7 +817,7 @@ public:
   uint8_t endTransmission() { stop(); return 0; };
 };
 
-I2C i2c;
+I2C0 i2c0;
 
 uint8_t log2(uint16_t x) {
   uint8_t y = 0;
@@ -825,22 +856,22 @@ public:
   }
 
   inline void SendPLLRegisterBulk() {
-    i2c.start();
-    i2c.SendByte(SI5351_ADDR << 1);
-    i2c.SendByte(26+0*8 + 4);  // Write to PLLA
-    i2c.SendByte(pll_regs[4]);
-    i2c.SendByte(pll_regs[5]);
-    i2c.SendByte(pll_regs[6]);
-    i2c.SendByte(pll_regs[7]);
-    i2c.stop();
+    i2c0.start();
+    i2c0.SendByte(SI5351_ADDR << 1);
+    i2c0.SendByte(26+0*8 + 4);  // Write to PLLA
+    i2c0.SendByte(pll_regs[4]);
+    i2c0.SendByte(pll_regs[5]);
+    i2c0.SendByte(pll_regs[6]);
+    i2c0.SendByte(pll_regs[7]);
+    i2c0.stop();
   }
 
   void SendRegister(uint8_t reg, uint8_t* data, uint8_t n) {
-    i2c.start();
-    i2c.SendByte(SI5351_ADDR << 1);
-    i2c.SendByte(reg);
-    while (n--) i2c.SendByte(*data++);
-    i2c.stop();
+    i2c0.start();
+    i2c0.SendByte(SI5351_ADDR << 1);
+    i2c0.SendByte(reg);
+    while (n--) i2c0.SendByte(*data++);
+    i2c0.stop();
   }
   void SendRegister(uint8_t reg, uint8_t val) { SendRegister(reg, &val, 1); }
   int16_t iqmsa; // to detect a need for a PLL reset
@@ -903,7 +934,7 @@ public:
     if (d % 2) d++;  // even numbers preferred for divider (AN619 p.4 and p.6)
     if ( (d * (fout - 5000) / fxtal) != (d * (fout + 5000) / fxtal) ) d += 2;
     // Variable PLLA VCO frequency at integer multiple of fout at around 27MHz*16 = 432MHz
-    // Si5351 spectral purity considerations: https://groups.io/g/QRPLabs/message/42662
+    // si5351 spectral purity considerations: https://groups.io/g/QRPLabs/message/42662
     // PLLA in fractional mode
     // Multisynth stage with integer divider but in frac mode due to phase setting
     uint32_t fvcoa = d * fout;
@@ -932,20 +963,20 @@ public:
     ms(MS2,  fvcoa, fout, PLLB, 0, 0, 0);
   }
 
-  // read Si5351 register
+  // read si5351 register
   uint8_t RecvRegister(uint8_t reg) {
-    i2c.start();  // Data write to set the register address
-    i2c.SendByte(SI5351_ADDR << 1);
-    i2c.SendByte(reg);
-    i2c.stop();
-    i2c.start(); // Data read to retrieve the data from the set address
-    i2c.SendByte((SI5351_ADDR << 1) | 1);
-    uint8_t data = i2c.RecvByte(LAST);
-    i2c.stop();
+    i2c0.start();  // Data write to set the register address
+    i2c0.SendByte(SI5351_ADDR << 1);
+    i2c0.SendByte(reg);
+    i2c0.stop();
+    i2c0.start(); // Data read to retrieve the data from the set address
+    i2c0.SendByte((SI5351_ADDR << 1) | 1);
+    uint8_t data = i2c0.RecvByte(LAST);
+    i2c0.stop();
     return data;
   }
 
-  // Si5351 power down
+  // si5351 power down
   void powerDown() {
     SendRegister(3,  0b11111111);   // disable all CLK outputs
     SendRegister(24, 0b00010000);   // CLK2 enabled, CLK0 & CLK1 disabled
@@ -965,11 +996,11 @@ SI5351 si5351;
 class IOExpander16 {
 public:
   inline void SendRegister(uint8_t reg, uint8_t val) {
-    i2c.begin();
-    i2c.beginTransmission(IOEXP16_ADDR);
-    i2c.write(reg);
-    i2c.write(val);
-    i2c.endTransmission();
+    i2c0.begin();
+    i2c0.beginTransmission(IOEXP16_ADDR);
+    i2c0.write(reg);
+    i2c0.write(val);
+    i2c0.endTransmission();
   }
   inline void init() {
     write(0);
@@ -1043,7 +1074,7 @@ void set_lpf(uint8_t band) {
 // VOX processing
 inline void vox_process(uint8_t trigger) {
   if (trigger) {
-    // hangtime = 255 / 4402 = 58ms (the time that TX at least stays on
+    // hangtime = 255 / 4402 = 58ms (the time that TX stays on
     // when not triggered again). tx == 255 when triggered first
     // 254 follows for subsequent triggers, until tx is off.
     tx = tx ? 254 : 255;
@@ -1168,7 +1199,7 @@ void dsp_tx() {
   int16_t adc;  // current ADC sample
   adc = ADC;
   ADCSRA |= (1 << ADSC);
-  // submit frequency registers to Si5351 over 731kbit/s I2C
+  // submit frequency registers to si5351 over 731kbit/s I2C
   // transfer takes 64/731 = 88us
   // then the PLL needs 50us to stabalize)
   si5351.SendPLLRegisterBulk();
@@ -1186,7 +1217,7 @@ void dsp_tx() {
   int16_t df = ssb(_adc >> attmic);
   adc += ADC;
   ADCSRA |= (1 << ADSC);
-  // calculate Si5351 registers based on frequency shift and carrier frequency
+  // calculate si5351 registers based on frequency shift and carrier frequency
   si5351.freq_calc_fast(df);
   adc += ADC;
   ADCSRA |= (1 << ADSC);
@@ -1262,7 +1293,7 @@ void dsp_tx_fm() {
   // actually this is done in advance (about 140us) of phase-change
   // so that phase-delays in key-shaping circuit filter can settle
   OCR1BL = lut[255];
-  // submit frequency registers to Si5351 over 731kbit/s I2C
+  // submit frequency registers to si5351 over 731kbit/s I2C
   // transfer takes 64/731 = 88us
   // then PLL-loopfilter needs 50us to stabalize
   si5351.SendPLLRegisterBulk();
@@ -1272,7 +1303,7 @@ void dsp_tx_fm() {
   int16_t in = (adc >> attmic);
   in = in << (drive);
   int16_t df = in;
-  // calculate Si5351 registers based on frequency shift and carrier frequency
+  // calculate si5351 registers based on frequency shift and carrier frequency
   si5351.freq_calc_fast(df);
 }
 
@@ -1562,10 +1593,10 @@ void send_cwchar(char ch) {
     while (!(mask & mcode)) mask = mask >> 1;
     while (mask != 1) {
       mask = mask >> 1;
-      switch_rxtx(ON, NOSHOW);
+      goto_tx(NOSHOW, practice);
       // turn on the side-tone for a dit or dah
       wait_ms((mcode & mask) ? dahtime : dittime);
-      switch_rxtx(OFF, NOSHOW);
+      goto_rx(NOSHOW);
       // turn off the side-tone for a symbol space
       wait_ms(dittime);
     }
@@ -1639,7 +1670,7 @@ void print_cwmsg(uint8_t id) {
   interrupts();
 }
 
-// beep and print a CW message
+// print a CW message and beep
 void send_cwmsg(uint8_t id) {
   noInterrupts();
   skip_dsp = YES;
@@ -1687,11 +1718,9 @@ void playtone(uint8_t onoff) {
   if (onoff) {
     skip_dsp = YES;
     noInterrupts();
-    practice = ON;
-    switch_rxtx(ON, NOSHOW);
+    goto_tx(NOSHOW, NOTX);
   } else {
-    switch_rxtx(OFF, NOSHOW);
-    practice = practice_save;
+    goto_rx(NOSHOW);
     skip_dsp = NO;
     interrupts();
   }
@@ -2420,6 +2449,44 @@ void show_banner() {
   oled.clr2eol();
 }
 
+const char* vfosel_label[] = { "A", "B" };
+const char* rmode_label[]  = { "LSB", "USB", "CW ", "FM ", "AM " };
+
+int16_t ritval  = 0;
+int32_t curfreq = 0;
+
+void show_vfo(int32_t fx, uint8_t mode) {
+  int32_t scale = 10000000;  // 10 MHz
+  oled.setCursor(0, ROW4);
+  if (ritmode) {
+    fx = ritval;
+    scale = 1000;
+    oled.print("RIT ");
+    oled.print(ritval < 0 ? '-' : '+');
+  } else {
+    if (vfosel == VFOA) oled.print('\x02');  // A
+    else oled.print('\x03');                 // B
+    if (fx/scale == 0) {
+      oled.print(' ');  // initial space instead of zero
+      scale/=10;
+    }
+  }
+  for (; scale; fx%=scale, scale/=10) {
+    oled.print(abs(fx/scale));
+    if (scale == 1000 || scale == 1000000) oled.print(',');
+  }
+  oled.print("   ");
+  oled.setCursor(RMODECOL, ROW4);
+  oled.print(rmode_label[mode]);
+}
+
+// display banner and vfo
+void main_screen() {
+  oled.clrR23();
+  show_banner();
+  show_vfo(curfreq, radiomode);
+}
+            
 // wait for button release
 void wait4release(uint8_t button = 0) {
   switch (button) {
@@ -2448,27 +2515,35 @@ void wait4release(uint8_t button = 0) {
       }
     break;
   }
-  delay(20);  // debounce
+  delay(DEBOUNCE);
 }
 
 // display locked status
 void show_lock() {
-  oled.setCursor(0, ROW1);
+  oled.setCursor(0, ROW2);
   oled.print("UI Locked");
-  oled.print('\x01');
   oled.clr2eol();
-  wait4release(EXIT);
-  wait4release(MENU);
+  wait4release();
+  oled.clrLine(ROW2);
   show_banner();
+}
+
+// display locked status
+void show_locked() {
+  oled.setCursor(0, ROW2);
+  oled.print("UI Locked");
+  oled.clr2eol();
+  delay(ONE_SECOND);
+  oled.clrLine(ROW2);
 }
 
 // display unlocked status
 void show_unlock() {
-  oled.setCursor(0, ROW1);
+  oled.setCursor(0, ROW2);
   oled.print("UI Unlocked");
-  oled.print('\x01');
   oled.clr2eol();
-  wait4release(EXIT);
+  wait4release();
+  oled.clrLine(ROW2);
   show_banner();
 }
 
@@ -2541,8 +2616,6 @@ uint16_t analogSampleMic() {
 
 uint8_t outofband = NO;
 uint8_t update_freq = YES;
-int32_t curfreq = 14060000;
-int16_t ritval = 0;
 
 uint32_t vfo[] = { 14060000, 14060000 };
 uint8_t  vfomode[] = { CW, CW };
@@ -2617,130 +2690,130 @@ void start_rx() {
 int16_t _centiGain = 0;
 uint32_t semiqsk_timeout = 0;
 
-// switch receive/transmit
-void switch_rxtx(uint8_t tx_enable, uint8_t show) {
-  // disable timer compare interrupt
-  TIMSK2 &= ~(1 << OCIE2A);
-  // wait until potential RX interrupt is finalized
-  delayMicroseconds(20);
+// go to receive mode
+void goto_rx(uint8_t show) {
   noInterrupts();
-  if (!semiqsk_timeout)
-    if (txdelay && tx_enable && !tx && !practice) {
-      // key-up TX relay in advance before actual transmission
-      digitalWrite(RXEN, LOW);  // TX (disable RX)
-#ifdef NTX
-      digitalWrite(NTX, LOW);   // TX (enable TX)
-#endif // NTX
-#ifdef PTX
-      digitalWrite(PTX, HIGH);  // TX (enable TX)
-#endif // PTX
-      for (uint8_t i=0; i<txdelay; i++) {
-        delayMicroseconds(100);
-      }
-    }
-  tx = tx_enable;
-  if (tx_enable) {
-    _centiGain = centiGain;  // backup AGC setting
+  TIMSK2 &= ~(1 << OCIE2A); // disable timer2 interrupt
+  if ((radiomode == CW) && !semiqsk_timeout) {
+    semiqsk_timeout = millis() + dittime * 8;
+    if (semiqsk) func_ptr = dummy;
+    else func_ptr = sdr_rx_00;
+  } else {
+    centiGain = _centiGain;  // restore AGC setting
     semiqsk_timeout = 0;
-    switch (radiomode) {
-      case USB:
-      case LSB: func_ptr = dsp_tx; break;
-      case CW:  func_ptr = dsp_tx_cw; break;
-      case AM:  func_ptr = dsp_tx_am; break;
-      case FM:  func_ptr = dsp_tx_fm; break;
-    }
-  } else {  // rx
-    if ((radiomode == CW) && (!(semiqsk_timeout))) {
-      semiqsk_timeout = millis() + dittime * 8;
-      if (semiqsk) func_ptr = dummy;
-      else func_ptr = sdr_rx_00;
-    } else {
-      centiGain = _centiGain;  // restore AGC setting
-      semiqsk_timeout = 0;
-      func_ptr = sdr_rx_00;
-    }
+    func_ptr = sdr_rx_00;
   }
   interrupts();
-  if (tx_enable) ADMUX = admux[2];
-  else acc_init = 1;
+  acc_init = 1;
   rx_state = 0;
-  if (tx_enable) { // tx
-    if (practice) {
-      digitalWrite(RXEN, LOW); // TX (disable RX)
-      if (show) {
-        oled.setCursor(0, ROW1);
-        // print the practice indicator
-        oled.print('P');
+  if (OCR1BL != 0) {
+    // ramp down the transmit PWM amplitude
+    // soft falling edge to prevent key clicks
+    for (uint16_t i=0; i!=31; i++) {
+      if (OCR1BL > rcos[i]) {
+        OCR1BL = rcos[i];
+        delayMicroseconds(60);
       }
-      si5351.SendRegister(SI_CLK_OE, TX0RX0);
-      // Do not enable PWM (TXPWM), do not enble CLK2
-    } else {
-      digitalWrite(RXEN, LOW);  // TX (disable RX)
-#ifdef NTX
-      digitalWrite(NTX, LOW);   // TX (enable TX)
-#endif // NTX
-#ifdef PTX
-      digitalWrite(PTX, HIGH);  // TX (enable TX)
-#endif // PTX
-      if (show) {
-        oled.setCursor(0, ROW1);
-        // print the Tx indicator
-        oled.print('T');
-      }
-      if (radiomode == CW) {
-        si5351.freq_calc_fast(-cw_offset);
-        si5351.SendPLLRegisterBulk();
-      } else if (ritmode) {
-        si5351.freq_calc_fast(0);
-        si5351.SendPLLRegisterBulk();
-      }
-      si5351.SendRegister(SI_CLK_OE, TX1RX0);
-      OCR1AL = MIDPOINT;  // SIDETONE to 2.5V
-      if (radiomode != CW) TCCR1A &= ~(1 << COM1A1);  // disable SIDETONE
-      TCCR1A |= (1 << COM1B1);  // enable TXPWM PWM
     }
-  } else {  // rx
-    if (OCR1BL != 0) {
-      // ramp down the transmit PWM amplitude
-      // soft falling edge to prevent key clicks
-      for (uint16_t i=0; i!=31; i++) {
-        if (OCR1BL > rcos[i]) {
-          OCR1BL = rcos[i];
-          delayMicroseconds(60);
-        }
-      }
-      OCR1BL = 0;
-    }
-    // enable SIDETONE (was disabled to prevent interference during ssb tx)
-    // disable TXPWM prevents interference during RX
-    TCCR1A |= (1 << COM1A1);
-    TCCR1A &= ~(1 << COM1B1);
-    digitalWrite(TXPWM, LOW);
-    OCR1BL = 0; // make sure PWM (TXPWM) is set to 0%
-#ifdef QUAD
-    si5351.SendRegister(18, 0x0f);  // disable invert on CLK2
-#endif //QUAD
-    si5351.SendRegister(SI_CLK_OE, TX0RX1);
-    // enable RX when not in semi-qsk phase; so RX and
-    // NTX/PTX outputs are switching only when in RX mode
-    if (!semiqsk_timeout || !semiqsk) {
-      digitalWrite(RXEN, !(attrx == 2)); // enable RX if attenuator not on
-#ifdef NTX
-      digitalWrite(NTX, HIGH);  // RX (disable TX)
-#endif // NTX
-#ifdef PTX
-      digitalWrite(PTX, LOW);   // TX (disable TX)
-#endif // PTX
-    }
-    si5351.freq_calc_fast(ritval);
-    si5351.SendPLLRegisterBulk();  // restore original PLL RX frequency
-    if (show && (menumode == NOT_IN_MENU)) {
-      oled.setCursor(0, ROW1);
-      // print the Rx indicator
-      oled.print('R');
-    }
+    OCR1BL = 0;
   }
-  OCR2A = ((F_CPU / 64) / (tx_enable ? F_SAMP_TX : F_SAMP_RX)) - 1;
+  // re-enable SIDETONE that was disabled during TX
+  // disable TXPWM prevents interference during RX
+  TCCR1A |=  (1 << COM1A1);
+  TCCR1A &= ~(1 << COM1B1);
+  digitalWrite(TXPWM, LOW);
+  OCR1BL = 0; // make sure PWM (TXPWM) is set to 0%
+#ifdef QUAD
+  si5351.SendRegister(18, 0x0f);  // disable invert on CLK2
+#endif
+  si5351.SendRegister(SI_CLK_OE, TX0RX1);
+  // enable RX when not in semi-qsk phase; so RX and
+  // NTX/PTX outputs are switching only when in RX mode
+  if (!semiqsk_timeout || !semiqsk) {
+    // enable RX if attenuator not on
+    digitalWrite(RXEN, !(attrx == 2));
+#ifdef NTX
+    digitalWrite(NTX, HIGH);  // RX (disable TX)
+#endif
+#ifdef PTX
+    digitalWrite(PTX, LOW);   // TX (disable TX)
+#endif
+  }
+  si5351.freq_calc_fast(ritval);
+  si5351.SendPLLRegisterBulk();  // restore original PLL RX frequency
+  if (show && (menumode == NOT_IN_MENU)) {
+    // print the Rx indicator
+    oled.setCursor(0, ROW1);
+    oled.print('R');
+  }
+  OCR2A = ((F_CPU / 64) / F_SAMP_RX) - 1;
+  TIMSK2 |= (1 << OCIE2A);  // enable timer2 interrupt
+}
+
+// go to transmit mode
+void goto_tx(uint8_t show, uint8_t notx) {
+  noInterrupts();
+  TIMSK2 &= ~(1 << OCIE2A); // disable timer2 interrupt
+  // wait until potential RX interrupt is finalized
+  delayMicroseconds(20);
+  if (!semiqsk_timeout && txdelay && !tx && !notx) {
+    // key-up relay in advance before actual transmission
+#ifdef NTX
+    digitalWrite(NTX, LOW);   // active-low tx enable
+#endif
+#ifdef PTX
+    digitalWrite(PTX, HIGH);  // active-high tx enable
+#endif
+    for (uint8_t i=0; i<txdelay; i++) delayMicroseconds(100);
+  }
+  tx = ON;
+  _centiGain = centiGain;  // backup AGC setting
+  semiqsk_timeout = 0;
+  switch (radiomode) {
+    case USB:
+    case LSB: func_ptr = dsp_tx; break;
+    case CW:  func_ptr = dsp_tx_cw; break;
+    case AM:  func_ptr = dsp_tx_am; break;
+    case FM:  func_ptr = dsp_tx_fm; break;
+  }
+  interrupts();
+  ADMUX = admux[2];
+  if (notx) {
+    digitalWrite(RXEN, LOW); // TX (disable RX)
+    if (show) {
+      // print the practice indicator
+      oled.setCursor(0, ROW1);
+      oled.print('P');
+    }
+    si5351.SendRegister(SI_CLK_OE, TX0RX0);
+    // Do not enable PWM (TXPWM), do not enble CLK2
+  } else {
+    digitalWrite(RXEN, LOW);  // TX (disable RX)
+#ifdef NTX
+    digitalWrite(NTX, LOW);   // TX (enable TX)
+#endif
+#ifdef PTX
+    digitalWrite(PTX, HIGH);  // TX (enable TX)
+#endif
+    if (show) {
+      // print the Tx indicator
+      oled.setCursor(0, ROW1);
+      oled.print('T');
+    }
+    if (radiomode == CW) {
+      si5351.freq_calc_fast(-cw_offset);
+      si5351.SendPLLRegisterBulk();
+    } else if (ritmode) {
+      si5351.freq_calc_fast(0);
+      si5351.SendPLLRegisterBulk();
+    }
+    si5351.SendRegister(SI_CLK_OE, TX1RX0);
+    OCR1AL = MIDPOINT;  // SIDETONE to 2.5V
+    // disable sidetone and enable TXPWM
+    if (radiomode != CW) TCCR1A &= ~(1 << COM1A1);
+    TCCR1A |= (1 << COM1B1);
+  }
+  OCR2A = ((F_CPU / 64) / F_SAMP_TX) - 1;
   TIMSK2 |= (1 << OCIE2A);  // enable timer compare interrupt
 }
 
@@ -2866,7 +2939,7 @@ void ref_stepsize_change() {
   if (stepsize < STEP_1M) stepsize = STEP_1;   // wrap
   if (stepsize > STEP_1)  stepsize = STEP_1M;  // wrap
   // display the new step size
-  oled.setCursor(5, ROW3);
+  oled.setCursor(6, ROW3);
   oled.print(stepsizes[stepsize]);
   oled.clr2eol();
 }
@@ -2905,34 +2978,6 @@ void powerDown() {
   do { wdt_enable(WDTO_15MS); while(1); } while (0);  // wtf??
 }
 
-const char* vfosel_label[] = { "A", "B" };
-const char* rmode_label[]  = { "LSB", "USB", "CW ", "FM ", "AM " };
-
-void show_vfo(int32_t fx, uint8_t mode) {
-  int32_t scale = 10000000;  // 10 MHz
-  oled.setCursor(0, ROW4);
-  if (ritmode) {
-    fx = ritval;
-    scale = 1000;
-    oled.print("RIT ");
-    oled.print(ritval < 0 ? '-' : '+');
-  } else {
-    if (vfosel == VFOA) oled.print('\x02');  // A
-    else oled.print('\x03');                 // B
-    if (fx/scale == 0) {
-      oled.print(' ');  // initial space instead of zero
-      scale/=10;
-    }
-  }
-  for (; scale; fx%=scale, scale/=10) {
-    oled.print(abs(fx/scale));
-    if (scale == 1000 || scale == 1000000) oled.print(',');
-  }
-  oled.print("   ");
-  oled.setCursor(RMODECOL, ROW4);
-  oled.print(rmode_label[mode]);
-}
-
 void check_ditdah() {
   // play tone if dit or dah is pressed
   if (DIT_OR_DAH) {
@@ -2942,7 +2987,7 @@ void check_ditdah() {
       wdt_reset();
     }
     playtone(OFF);
-    wait_ms(20);  // debounce
+    wait_ms(DEBOUNCE);
   }
 }
 
@@ -2978,8 +3023,8 @@ void show_savedfreq() {
   show_vfo(sfmem[sfindex], srmem[sfindex]);
 }
 
-#define F_MAX    28000000   // Si5351 crystal max value
-#define F_MIN    24000000   // Si5351 crystal min value
+#define F_MAX    28000000   // si5351 crystal max value
+#define F_MIN    24000000   // si5351 crystal min value
 
 // menu parameter actions
 void paramAction(uint8_t id, uint8_t wrap, uint8_t* ptr,
@@ -2991,7 +3036,7 @@ void paramAction(uint8_t id, uint8_t wrap, uint8_t* ptr,
     // check for encoder input
     if (encoder_val) {
       if (id == REFCAL) {
-        // Si5351 crystal calibration value
+        // si5351 calibration value
         fxtal += (encoder_val * stepsizes[stepsize]);
         if      (fxtal < F_MIN) fxtal = F_MIN;
         else if (fxtal > F_MAX) fxtal = F_MAX;
@@ -3028,7 +3073,6 @@ void paramAction(uint8_t id, uint8_t wrap, uint8_t* ptr,
           semiqsk = value;
           break;
         case PRACTICE:
-          // save the practice state
           practice_save = value;
           break;
         case CWDEC:
@@ -3189,7 +3233,7 @@ void otherAction(uint8_t id, const char* label) {
           }
           wait_ms(1);
         }
-        wait_ms(20);   // debounce
+        wait_ms(DEBOUNCE);
         // the exit button was pressed
         // so load the stored frequency and exit
         curfreq   = sfmem[sfindex];
@@ -3371,7 +3415,7 @@ void otherAction(uint8_t id, const char* label) {
       oled.print(VERSION);
       oled.clr2eol();
       oled.setCursor(0, ROW4);
-      oled.print(TIMESTAMP);
+      oled.print(DATE);
       oled.clr2eol();
       break;
     default:
@@ -3391,7 +3435,8 @@ void clean_string(uint8_t size, char* str) {
   }
 }
 
-#define EEPROM_OFFSET 0x00
+#define EEPROM_OFFSET 0x00   // eeprom data starts at 0
+#define CALFREQ_ADDR  0x24   // si5351 xtal cal frequency
 
 // load user settings from eeprom
 void loadAll() {
@@ -3560,8 +3605,9 @@ int8_t menuAction(uint8_t id) {
 
 // initialize pins
 void initPins() {
+  digitalWrite(BLINKY,   LOW);   // diag LED is off
+  digitalWrite(XPTT,     LOW);   // XPTT is off
   digitalWrite(RXEN,    HIGH);   // Rx is enabled
-  digitalWrite(LED,     HIGH);   // LED is off
   digitalWrite(TXPWM,    LOW);   // disable pwm
   digitalWrite(SIDETONE, LOW);   // disable side tone
   digitalWrite(SDA0, LOW);       // I2C bus #0
@@ -3625,16 +3671,16 @@ void analyseCATcmd() {
     Command_RX();
 
   else if ((CATcmd[0] == 'T') && (CATcmd[1] == 'X') && (CATcmd[2] == ';'))
-    Command_TX0();
+    Command_TX();
 
   else if ((CATcmd[0] == 'T') && (CATcmd[1] == 'X') && (CATcmd[2] == '0'))
-    Command_TX0();
+    Command_TX();
 
   else if ((CATcmd[0] == 'T') && (CATcmd[1] == 'X') && (CATcmd[2] == '1'))
-    Command_TX1();
+    Command_TX();
 
   else if ((CATcmd[0] == 'T') && (CATcmd[1] == 'X') && (CATcmd[2] == '2'))
-    Command_TX2();
+    Command_TX();
 
   else if ((CATcmd[0] == 'A') && (CATcmd[1] == 'G') && (CATcmd[2] == '0'))  // add
     Command_AG0();
@@ -3830,21 +3876,12 @@ void Command_AI0() {
 }
 
 void Command_RX() {
-  switch_rxtx(OFF, SHOW);
-  semiqsk_timeout = 0;  // hack: fix for multiple RX cmds
+  goto_rx(SHOW);
   Serial.print("RX0;");
 }
 
-void Command_TX0() {
-  switch_rxtx(ON, SHOW);
-}
-
-void Command_TX1() {
-  switch_rxtx(ON, SHOW);
-}
-
-void Command_TX2() {
-  switch_rxtx(ON, SHOW);
+void Command_TX() {
+  goto_tx(SHOW, OFF);
 }
 
 void Command_RS() {
@@ -3936,7 +3973,7 @@ void iambic_keyer() {
         if (swrmeter) {
           cwdec = OFF;
           stimer = millis() + 500;
-          switch_rxtx(ON, SHOW);  // key the transmitter
+          goto_tx(SHOW, practice);
           while (GOTKEY) {
             keyerinfo = 0;
             read_paddles();
@@ -3946,7 +3983,7 @@ void iambic_keyer() {
               stimer = millis() + 500;
             }
           }
-          switch_rxtx(OFF, SHOW);
+          goto_rx(SHOW);
         }
         #endif
       } else {
@@ -3962,7 +3999,7 @@ void iambic_keyer() {
           keyerinfo |= WAS_DIT;
           ktimer = millis() + dittime;
           shift_txsym(DITX);  // record a dit
-          switch_rxtx(ON, SHOW);
+          goto_tx(SHOW, practice);
           keyerstate = KEY_WAIT;
           break;
         case 0x07:  // dit and dah and prev dit
@@ -3972,7 +4009,7 @@ void iambic_keyer() {
           keyerinfo &= ~WAS_DIT;
           ktimer = millis() + dahtime;
           shift_txsym(DAHX);  // record a dah
-          switch_rxtx(ON, SHOW);
+          goto_tx(SHOW, practice);
           keyerstate = KEY_WAIT;
           break;
         default:
@@ -3985,7 +4022,7 @@ void iambic_keyer() {
       // wait dit/dah duration
       if (millis() > ktimer) {
         // done sending dit/dah
-        switch_rxtx(OFF, SHOW);
+        goto_rx(SHOW);
         // inter-symbol time is 1 dit
         ktimer = millis() + dittime;
         keyerstate = IDD_WAIT;
@@ -4015,7 +4052,7 @@ void iambic_keyer() {
               ktimer = millis() + dittime;
               shift_txsym(DITX);  // record a dit
             }
-            switch_rxtx(ON, SHOW);
+            goto_tx(SHOW, practice);
             keyerinfo = 0;
             keyerstate = KEY_WAIT;
           } else {
@@ -4074,7 +4111,7 @@ void straight_key() {
   if (GOTKEY) {
     dtimer = millis() + dittime;
     stimer = millis() + 500;
-    switch_rxtx(ON, SHOW);  // key the transmitter
+    goto_tx(SHOW, practice);
     while (GOTKEY) {
       keyerinfo = 0;
       read_paddles();
@@ -4088,12 +4125,12 @@ void straight_key() {
     }
     if (millis() > dtimer) shift_txsym(DAHX);  // record a dah
     else shift_txsym(DITX);                    // record a dit
-    switch_rxtx(OFF, SHOW);
+    goto_rx(SHOW);
     ltimer = millis() + lettergap;
     wtimer = millis() + wordgap;
     check_letter = 1;
     check_word = 1;
-    wait_ms(10);  // debounce
+    wait_ms(DEBOUNCE);
   } else {
     if (check_letter) {
       if (millis() > ltimer) {
@@ -4111,7 +4148,7 @@ void straight_key() {
         print_cwsym(XMIT);
       }
     }
-    wait_ms(10);  // debounce
+    wait_ms(DEBOUNCE);
   }
 }
 
@@ -4149,10 +4186,6 @@ void printS(char* msg, float val) {
 void reset_xdt() {
   xtimer = 0;
   xdt = millis();
-  if (display == OFF) {
-    display = ON;
-    oled.onDisplay();
-  }
 }
 
 // run diagnostics
@@ -4305,7 +4338,6 @@ void setup() {
   PCMSK2 = 0;
   encoder_init();
   initPins();
-  Wire.init();
   delay(100);
   oled.begin(16, 4);
   #define BAUD   115200
@@ -4317,7 +4349,7 @@ void setup() {
     oled.setCursor(0, ROW2);
     oled.print("Factory Reset.. ");
     while (BUTTON_PRESSED) delay(1);
-    delay(20);  // debounce
+    delay(DEBOUNCE);
   } else {
     // load parameters from the eeprom
     loadAll();
@@ -4340,7 +4372,7 @@ void setup() {
     oled.setCursor(0, ROW2);
     oled.print("Check PTT/key!! ");
     while (DIT_OR_DAH) delay(1);
-    delay(20);  // debounce
+    delay(DEBOUNCE);
   }
   oled.clrR23();
   wdt_enable(WDTO_4S);  // enable watchdog
@@ -4350,31 +4382,6 @@ void setup() {
 void loop() {
   uint8_t event;                // click long press
   uint8_t button;               // which button
-
-  // if VOX is enabled in LSB/USB mode, then take mic samples and
-  // derive the amplitude to detect a vox threshold crossing
-  if (vox && ((radiomode == LSB) || (radiomode == USB))) {
-    if (!vox_tx) {
-      // take N mic samples, then process
-      if (vox_sample++ == 16) {
-        ssb(((int16_t)(vox_adc/16) - (512 - AF_BIAS)) >> attmic);
-        vox_sample = 0;
-        vox_adc = 0;
-      } else {
-        vox_adc += analogSampleMic();
-      }
-      if (tx) {
-        // TX triggered by audio -> TX
-        vox_tx = 1;
-        switch_rxtx(ON, SHOW);
-      }
-    } else if (!tx) {
-      // VOX activated, no audio detected -> RX
-      switch_rxtx(OFF, SHOW);
-      vox_tx = 0;
-      wait_ms(32);
-    }
-  }
 
   // CW decoder active during RX
   if ((menumode == NOT_IN_MENU) && (radiomode == CW) &&
@@ -4390,10 +4397,10 @@ void loop() {
     else iambic_keyer();
   }
 
-  // a long press of DIT or DAH will switch to CW mode
-  if ((menumode == NOT_IN_MENU) && (radiomode != CW) &&  DIT_OR_DAH) {
+  // a long press of DAH will switch to CW mode
+  if ((menumode == NOT_IN_MENU) && (radiomode != CW) && DAH_PRESSED) {
     t0 = millis();
-    while (DIT_OR_DAH) {
+    while (DAH_PRESSED) {
       if ((millis() - t0) > 700) {
         radiomode = CW;
         vfomode[vfosel] = radiomode;
@@ -4406,11 +4413,39 @@ void loop() {
     }
   }
 
+  // handle ptt button when in ssb modes
+  if ((radiomode < CW) && PTT_PRESSED) {
+    goto_tx(SHOW, OFF);
+    while (PTT_PRESSED) delay(DEBOUNCE);
+    goto_rx(SHOW);
+  }
+
   // play side tone when in tone volume menu
   if ((menumode == SELECT_VALUE) && (menu == TONEVOL)) check_ditdah();
 
   // check for semi-qsk timeout
-  if (semiqsk_timeout && (millis() > semiqsk_timeout)) switch_rxtx(OFF, SHOW);
+  if (semiqsk_timeout && (millis() > semiqsk_timeout))
+    goto_rx(SHOW);
+
+  // check for encoder turned while UI locked
+  if (ui_locked && encoder_ui) {
+    show_locked();
+    delay(DEBOUNCE);
+    encoder_ui = 0;
+    encoder_val = 0;
+    event = NONE;
+    goto end_of_loop;   // skip all UI processing
+  }
+
+  // check for encoder or button while screen blanked
+  if ((display == OFF) && (encoder_val || BUTTON_PRESSED)) {
+    display = ON;
+    oled.onDisplay();
+    wait4release();
+    encoder_val = 0;
+    event = NONE;
+    goto end_of_loop;   // skip all UI processing
+  }
 
   if (BUTTON_PRESSED) {
 
@@ -4418,7 +4453,7 @@ void loop() {
     if (MENU_PRESSED) button = MENU;
     if (EXIT_PRESSED) button = EXIT;
 
-    reset_xdt();    // reset display timeout
+    reset_xdt();  // reset display timeout
 
     if (!(event & LONG)) {
       event = CLICK;
@@ -4445,20 +4480,25 @@ void loop() {
     }
 
     // enforce the UI lock
-    if (ui_lock) {
-      t0 = millis();
-      while (EXIT_PRESSED) {
-        // check for super-long press
-        if ((millis() - t0) > MS_SLP) { event = SLP; break; }
-        wait_ms(1);
-        wdt_reset();
+    if (ui_locked) {
+      if (EXIT_PRESSED) {
+        t0 = millis();
+        while (EXIT_PRESSED) {
+          // check for triple-long press
+          if ((millis() - t0) > MS_TLP) { event = TLP; break; }
+          wait_ms(1);
+          wdt_reset();
+        }
       }
-      if (event == SLP) {
-        // a super-long press will unlock the UI
-        ui_lock = OFF;
+      if (event == TLP) {
+        // a triple-long press will unlock the UI
+        ui_locked = NO;
         show_unlock();
+      } else {
+        // ignore other button press while UI locked
+        show_locked();
+        wait4release();
       }
-      wait4release(EXIT);
       event = NONE;
       goto end_of_loop;   // skip all UI processing
     }
@@ -4467,7 +4507,7 @@ void loop() {
       case EXIT|MENU|LONG:
         // a long press of both exit and menu will lock the UI
         if (menumode == NOT_IN_MENU) {
-          ui_lock = ON;
+          ui_locked = YES;
           show_lock();
         }
         break;
@@ -4553,10 +4593,9 @@ void loop() {
           case SELECT_MENU:
           case SELECT_VALUE:
             menumode = NOT_IN_MENU;    // back to main screen
-            oled.clrR23();
-            update_freq = YES;
-            show_banner();
+            main_screen();
             if (menu == KEYERWPM) beep_cw("V");  // acknowledge change
+            if (menu == REFCAL) EEPROM.updateLong(CALFREQ_ADDR, fxtal);
             break;
           case EDIT_STRING:
             menumode = SELECT_MENU;    // back to menu mode
@@ -4581,36 +4620,28 @@ void loop() {
             wdt_reset();
           }
           if (event == DLP) {
-            // a double-long press will open the RIT menu
-            menu = RIT;
-            menuAction(menu);
-            t0 = millis();
             while (EXIT_PRESSED) {
               // check for triple-long press
-              if ((millis() - t0) > MS_SLP) { event = SLP; break; }
+              if ((millis() - t0) > MS_TLP) { event = TLP; break; }
               wait_ms(1);
               wdt_reset();
             }
-            if (event == SLP) {
+          }
+          switch (event) {
+            case DLP:
+              // a double-long press will open the RIT menu
+              menu = RIT;
+              menuAction(menu);
+              break;
+            case TLP:
               // a triple-long press will blank the screen
-              display = OFF;
-              ritmode = OFF;          // disable RIT
-              ritval = 0;
               menumode = NOT_IN_MENU; // back to main screen
-              oled.clrR23();
-              update_freq = YES;
-              show_banner();
-              oled.setCursor(0, ROW2);
-              oled.print("BLANK SCREEN");
-
-              // wait for button release
-              while (EXIT_PRESSED) {
-                wait_ms(1);
-                wdt_reset();
-              }
-              oled.clrLine(ROW2);
+              main_screen();
+              display = OFF;
               oled.noDisplay();
-            }
+              wait4release();
+            default:
+              break;
           }
         }
         break;
@@ -4651,11 +4682,11 @@ void loop() {
               t0 = millis();
               while (ENCO_PRESSED) {
                 // check for triple-long press
-                if ((millis() - t0) > MS_SLP) { event = SLP; break; }
+                if ((millis() - t0) > MS_TLP) { event = TLP; break; }
                 wait_ms(1);
                 wdt_reset();
               }
-              if (event == SLP) {
+              if (event == TLP) {
                 // a triple-long press for CW calibrate
                 menu = CWCAL;
                 menuAction(menu);
